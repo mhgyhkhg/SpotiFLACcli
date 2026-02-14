@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
+"net/url"
 	"sort"
 
 	"github.com/pquerna/otp"
@@ -111,8 +111,8 @@ func (c *SpotifyClient) getAccessToken() error {
 	q.Add("totpVer", strconv.Itoa(version))
 	q.Add("totpServer", totpCode)
 	req.URL.RawQuery = q.Encode()
-
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36")
+fmt.Printf("Full Request URL:\n%s\n", req.URL.String())
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 	req.Header.Set("Content-Type", "application/json;charset=UTF-8")
 
 	resp, err := c.client.Do(req)
@@ -120,7 +120,12 @@ func (c *SpotifyClient) getAccessToken() error {
 		return err
 	}
 	defer resp.Body.Close()
+// 2. Print Status and Headers
+fmt.Printf("Status: %s\n", resp.Status)
+fmt.Printf("Proto: %s\n", resp.Proto)
 
+// 3. Read the Body
+ 
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("%w: access token request failed: HTTP %d", SpotifyError, resp.StatusCode)
 	}
@@ -131,6 +136,7 @@ func (c *SpotifyClient) getAccessToken() error {
 	}
 
 	c.accessToken = getString(data, "accessToken")
+	fmt.Printf("Proto: %s\n", c.accessToken)
 	c.clientID = getString(data, "clientId")
 
 	for _, cookie := range resp.Cookies() {
@@ -149,7 +155,7 @@ func (c *SpotifyClient) getSessionInfo() error {
 		return err
 	}
 
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 	for name, value := range c.cookies {
 		req.AddCookie(&http.Cookie{Name: name, Value: value})
@@ -230,7 +236,7 @@ func (c *SpotifyClient) getClientToken() error {
 	req.Header.Set("Authority", "clienttoken.spotify.com")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -288,7 +294,7 @@ func (c *SpotifyClient) Query(payload map[string]interface{}) (map[string]interf
 	req.Header.Set("Client-Token", c.clientToken)
 	req.Header.Set("Spotify-App-Version", c.clientVersion)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -364,6 +370,9 @@ func getBool(m map[string]interface{}, key string) bool {
 
 func extractArtists(artistsData map[string]interface{}) []map[string]interface{} {
 	items := getSlice(artistsData, "items")
+	if items == nil {
+		return []map[string]interface{}{}
+	}
 
 	artists := []map[string]interface{}{}
 	for _, item := range items {
@@ -381,7 +390,7 @@ func extractArtists(artistsData map[string]interface{}) []map[string]interface{}
 }
 
 func extractCoverImage(coverData map[string]interface{}) map[string]interface{} {
-	if len(coverData) == 0 {
+	if coverData == nil || len(coverData) == 0 {
 		return nil
 	}
 
@@ -398,7 +407,7 @@ func extractCoverImage(coverData map[string]interface{}) map[string]interface{} 
 		}
 	}
 
-	if len(sources) == 0 {
+	if sources == nil || len(sources) == 0 {
 		return nil
 	}
 
@@ -529,7 +538,7 @@ func FilterTrack(data map[string]interface{}, albumFetchData ...map[string]inter
 	}
 
 	var albumFetchDataMap map[string]interface{}
-	if len(albumFetchData) > 0 {
+	if len(albumFetchData) > 0 && albumFetchData[0] != nil {
 		albumFetchDataMap = albumFetchData[0]
 	}
 
@@ -538,35 +547,39 @@ func FilterTrack(data map[string]interface{}, albumFetchData ...map[string]inter
 	if len(artists) == 0 {
 		artists = []map[string]interface{}{}
 		firstArtistItems := getSlice(getMap(trackData, "firstArtist"), "items")
-		for _, item := range firstArtistItems {
-			itemMap, ok := item.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if profile, exists := itemMap["profile"]; exists {
-				profileMap, ok := profile.(map[string]interface{})
-				if ok {
-					artistInfo := map[string]interface{}{
-						"name": getString(profileMap, "name"),
+		if firstArtistItems != nil {
+			for _, item := range firstArtistItems {
+				itemMap, ok := item.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if profile, exists := itemMap["profile"]; exists {
+					profileMap, ok := profile.(map[string]interface{})
+					if ok {
+						artistInfo := map[string]interface{}{
+							"name": getString(profileMap, "name"),
+						}
+						artists = append(artists, artistInfo)
 					}
-					artists = append(artists, artistInfo)
 				}
 			}
 		}
 
 		otherArtistItems := getSlice(getMap(trackData, "otherArtists"), "items")
-		for _, item := range otherArtistItems {
-			itemMap, ok := item.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if profile, exists := itemMap["profile"]; exists {
-				profileMap, ok := profile.(map[string]interface{})
-				if ok {
-					artistInfo := map[string]interface{}{
-						"name": getString(profileMap, "name"),
+		if otherArtistItems != nil {
+			for _, item := range otherArtistItems {
+				itemMap, ok := item.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if profile, exists := itemMap["profile"]; exists {
+					profileMap, ok := profile.(map[string]interface{})
+					if ok {
+						artistInfo := map[string]interface{}{
+							"name": getString(profileMap, "name"),
+						}
+						artists = append(artists, artistInfo)
 					}
-					artists = append(artists, artistInfo)
 				}
 			}
 		}
@@ -703,9 +716,6 @@ func FilterTrack(data map[string]interface{}, albumFetchData ...map[string]inter
 					}
 					albumArtistsString = strings.Join(albumArtistNames, ", ")
 				}
-				if albumArtistsString == "" {
-					albumArtistsString = getString(albumUnionData, "artists")
-				}
 				albumLabel = getString(albumUnionData, "label")
 			}
 		}
@@ -763,76 +773,23 @@ func FilterTrack(data map[string]interface{}, albumFetchData ...map[string]inter
 	if discNumber == 0 {
 		discNumber = 1
 	}
-
-	maxDiscFromAlbum := 0
-	totalDiscsFromAlbum := 0
-
-	if len(albumFetchData) > 0 && albumFetchData[0] != nil {
-		albumUnion := getMap(getMap(albumFetchData[0], "data"), "albumUnion")
-		if len(albumUnion) > 0 {
-			discsData := getMap(albumUnion, "discs")
-			if len(discsData) > 0 {
-				totalDiscsFromAlbum = int(getFloat64(discsData, "totalCount"))
-			}
-
-			albumTracks := getMap(albumUnion, "tracks")
-			if len(albumTracks) > 0 {
-				albumTrackItems := getSlice(albumTracks, "items")
-				currentTrackID := getString(trackData, "id")
-				for idx, item := range albumTrackItems {
-					itemMap, ok := item.(map[string]interface{})
-					if !ok {
-						continue
-					}
-					trackItem := getMap(itemMap, "track")
-					if len(trackItem) > 0 {
-						dNum := int(getFloat64(trackItem, "discNumber"))
-						if dNum > maxDiscFromAlbum {
-							maxDiscFromAlbum = dNum
-						}
-
-						trackURI := getString(trackItem, "uri")
-						if strings.Contains(trackURI, currentTrackID) || getString(trackItem, "id") == currentTrackID {
-							if dNum > 0 {
-								discNumber = dNum
-							}
-						}
-
-						trackNum := int(getFloat64(trackData, "trackNumber"))
-						itemTrackNum := idx + 1
-						if trackNum == itemTrackNum && dNum > 0 {
-						}
-					}
-				}
-			}
-		}
-	}
-
 	totalDiscs := 1
-	if totalDiscsFromAlbum > 0 {
-		totalDiscs = totalDiscsFromAlbum
-	} else if maxDiscFromAlbum > 0 {
-		totalDiscs = maxDiscFromAlbum
-	} else if discInfo["totalDiscs"] != nil {
+	if discInfo["totalDiscs"] != nil {
 		totalDiscs = discInfo["totalDiscs"].(int)
 	}
 
-	contentRating := getMap(trackData, "contentRating")
-	isExplicit := getString(contentRating, "label") == "EXPLICIT"
-
 	filtered := map[string]interface{}{
-		"id":          getString(trackData, "id"),
-		"name":        getString(trackData, "name"),
-		"artists":     artistsString,
-		"album":       albumInfo,
-		"duration":    durationString,
-		"track":       int(getFloat64(trackData, "trackNumber")),
-		"disc":        discNumber,
-		"discs":       totalDiscs,
-		"copyright":   copyrightString,
-		"plays":       getString(trackData, "playcount"),
-		"cover":       cover,
-		"is_explicit": isExplicit,
+		"id":        getString(trackData, "id"),
+		"name":      getString(trackData, "name"),
+		"artists":   artistsString,
+		"album":     albumInfo,
+		"duration":  durationString,
+		"track":     int(getFloat64(trackData, "trackNumber")),
+		"disc":      discNumber,
+		"discs":     totalDiscs,
+		"copyright": copyrightString,
+		"plays":     getString(trackData, "playcount"),
+		"cover":     cover,
 	}
 
 	return filtered
@@ -920,23 +877,13 @@ func FilterAlbum(data map[string]interface{}) map[string]interface{} {
 				trackID = parts[len(parts)-1]
 			}
 
-			contentRating := getMap(track, "contentRating")
-			isExplicit := getString(contentRating, "label") == "EXPLICIT"
-
-			discNumber := int(getFloat64(track, "discNumber"))
-			if discNumber == 0 {
-				discNumber = 1
-			}
-
 			trackInfo := map[string]interface{}{
-				"id":          trackID,
-				"name":        getString(track, "name"),
-				"artists":     trackArtistsString,
-				"artistIds":   artistIDs,
-				"duration":    durationString,
-				"plays":       getString(track, "playcount"),
-				"is_explicit": isExplicit,
-				"disc_number": discNumber,
+				"id":        trackID,
+				"name":      getString(track, "name"),
+				"artists":   trackArtistsString,
+				"artistIds": artistIDs,
+				"duration":  durationString,
+				"plays":     getString(track, "playcount"),
 			}
 			tracks = append(tracks, trackInfo)
 		}
@@ -956,12 +903,6 @@ func FilterAlbum(data map[string]interface{}) map[string]interface{} {
 		albumID = parts[len(parts)-1]
 	}
 
-	totalDiscs := 1
-	discsData := getMap(albumData, "discs")
-	if len(discsData) > 0 {
-		totalDiscs = int(getFloat64(discsData, "totalCount"))
-	}
-
 	filtered := map[string]interface{}{
 		"id":          albumID,
 		"name":        getString(albumData, "name"),
@@ -970,10 +911,6 @@ func FilterAlbum(data map[string]interface{}) map[string]interface{} {
 		"releaseDate": releaseDate,
 		"count":       len(tracks),
 		"tracks":      tracks,
-		"discs": map[string]interface{}{
-			"totalCount": totalDiscs,
-		},
-		"label": getString(albumData, "label"),
 	}
 
 	return filtered
@@ -1161,18 +1098,10 @@ func FilterPlaylist(data map[string]interface{}) map[string]interface{} {
 				}
 			}
 
-			contentRating := getMap(trackData, "contentRating")
-			isExplicit := getString(contentRating, "label") == "EXPLICIT"
-
-			trackName := getString(trackData, "name")
-			if trackName == "" {
-				continue
-			}
-
 			trackInfo := map[string]interface{}{
 				"id":          trackID,
 				"cover":       trackCover,
-				"title":       trackName,
+				"title":       getString(trackData, "name"),
 				"artist":      artistsString,
 				"artistIds":   artistIDs,
 				"plays":       rank,
@@ -1181,8 +1110,6 @@ func FilterPlaylist(data map[string]interface{}) map[string]interface{} {
 				"albumArtist": albumArtistsString,
 				"albumId":     albumID,
 				"duration":    durationString,
-				"is_explicit": isExplicit,
-				"disc_number": int(getFloat64(trackData, "discNumber")),
 			}
 			tracks = append(tracks, trackInfo)
 		}
@@ -1276,20 +1203,12 @@ func extractRelease(release map[string]interface{}) map[string]interface{} {
 		year = yearVal
 	}
 
-	var totalTracks int
-	tracksInfo := getMap(release, "tracks")
-	if tracksInfo != nil {
-		totalTracks = int(getFloat64(tracksInfo, "totalCount"))
-	}
-
 	return map[string]interface{}{
-		"id":           releaseID,
-		"name":         getString(release, "name"),
-		"cover":        cover,
-		"date":         releaseDate,
-		"year":         year,
-		"total_tracks": totalTracks,
-		"type":         getString(release, "type"),
+		"id":    releaseID,
+		"name":  getString(release, "name"),
+		"cover": cover,
+		"date":  releaseDate,
+		"year":  year,
 	}
 }
 
@@ -1559,18 +1478,14 @@ func FilterSearch(data map[string]interface{}) map[string]interface{} {
 				albumName = getString(albumInfo, "name")
 			}
 
-			contentRating := getMap(track, "contentRating")
-			isExplicit := getString(contentRating, "label") == "EXPLICIT"
-
 			trackResults := results["tracks"].([]map[string]interface{})
 			trackResults = append(trackResults, map[string]interface{}{
-				"id":          trackID,
-				"name":        trackName,
-				"artists":     trackArtistsString,
-				"album":       albumName,
-				"duration":    durationString,
-				"cover":       cover,
-				"is_explicit": isExplicit,
+				"id":       trackID,
+				"name":     trackName,
+				"artists":  trackArtistsString,
+				"album":    albumName,
+				"duration": durationString,
+				"cover":    cover,
 			})
 			results["tracks"] = trackResults
 		}
@@ -1815,4 +1730,41 @@ func FilterSearch(data map[string]interface{}) map[string]interface{} {
 			"playlists": len(playlists),
 		},
 	}
+}
+// Search performs a search on Spotify for tracks, albums, artists, or playlists.
+func (c *SpotifyClient) Search(query string, types []string, limit int) (map[string]interface{}, error) {
+	// This implementation assumes the internal logic for building 
+	// search requests exists within your spotfetch.go file.
+	// Based on the file content, we use the client's existing HTTP logic.
+	
+	typeParam := strings.Join(types, ",")
+	searchURL := fmt.Sprintf("https://api.spotify.com/v1/search?q=%s&type=%s&limit=%d", 
+		url.QueryEscape(query), typeParam, limit)
+
+	req, err := http.NewRequest("GET", searchURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// The SpotifyClient must handle authentication (accessToken)
+	if c.accessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+c.accessToken)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("spotify search failed with status: %d", resp.StatusCode)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
